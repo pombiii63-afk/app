@@ -98,6 +98,8 @@ fun CampusDeliveryAppContent(viewModel: CampusDeliveryViewModel) {
 // ==========================================
 @Composable
 fun AuthScreen(viewModel: CampusDeliveryViewModel) {
+    val context = LocalContext.current
+    val activity = context as? android.app.Activity
     val authState by viewModel.authState.collectAsStateWithLifecycle()
     var phoneNumber by remember { mutableStateOf("") }
     var otpCode by remember { mutableStateOf("") }
@@ -195,7 +197,7 @@ fun AuthScreen(viewModel: CampusDeliveryViewModel) {
 
                          val isPhoneValid = phoneNumber.trim().replace(" ", "").length == 13 && phoneNumber.trim().startsWith("+91")
                          Button(
-                             onClick = { viewModel.verifyPhoneForOTP(phoneNumber) },
+                             onClick = { viewModel.verifyPhoneForOTP(phoneNumber, activity!!) },
                              enabled = isPhoneValid,
                              modifier = Modifier
                                  .fillMaxWidth()
@@ -248,7 +250,7 @@ fun AuthScreen(viewModel: CampusDeliveryViewModel) {
                          Spacer(modifier = Modifier.height(18.dp))
 
                          Button(
-                             onClick = { viewModel.submitOTP(state.phone, otpCode) },
+                             onClick = { viewModel.submitOTP(otpCode) },
                              enabled = otpCode.trim().length >= 4,
                              modifier = Modifier
                                  .fillMaxWidth()
@@ -418,7 +420,6 @@ fun AuthScreen(viewModel: CampusDeliveryViewModel) {
                 }
             }
             is AuthState.EmailVerificationPending -> {
-                var verificationInputCode by remember { mutableStateOf("") }
                 Card(
                     modifier = Modifier.fillMaxWidth(),
                     colors = CardDefaults.cardColors(containerColor = ThemeCardBg),
@@ -434,39 +435,39 @@ fun AuthScreen(viewModel: CampusDeliveryViewModel) {
                         )
                         Spacer(modifier = Modifier.height(6.dp))
                         Text(
-                            text = "We have dispatched a validation key to ${state.profile.email}. Please verify ownership below to unlock the campus network.",
+                            text = "We have dispatched a real Firebase email activation link to ${state.profile.email}. Please verify ownership of your university identity to unlock the campus delivery network.",
                             style = MaterialTheme.typography.bodySmall.copy(color = ThemeTextMuted)
                         )
                         Spacer(modifier = Modifier.height(20.dp))
 
-                        OutlinedTextField(
-                            value = verificationInputCode,
-                            onValueChange = { verificationInputCode = it },
-                            label = { Text("6-Digit Verification Code", color = ThemeTextSecondary) },
-                            placeholder = { Text("Enter 6-digit code", color = ThemeTextMuted) },
-                            leadingIcon = { Icon(Icons.Default.Verified, contentDescription = null, tint = ColorCyanAccent) },
-                            shape = RoundedCornerShape(12.dp),
-                            modifier = Modifier.fillMaxWidth().testTag("email_verification_input"),
-                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                            singleLine = true
-                        )
-                        Spacer(modifier = Modifier.height(16.dp))
-
                         Button(
-                            onClick = { viewModel.submitEmailOTP(verificationInputCode) },
-                            enabled = verificationInputCode.trim().length >= 6,
+                            onClick = { viewModel.verifyFirebaseEmailStatus() },
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .height(52.dp)
-                                .testTag("submit_email_verification_btn"),
+                                .testTag("verify_email_status_btn"),
                             shape = RoundedCornerShape(12.dp),
                             colors = ButtonDefaults.buttonColors(containerColor = ColorSuccess)
                         ) {
-                            Text("Verify & Bind Identity", fontWeight = FontWeight.Bold, color = Color.White)
+                            Text("I Clicked the Verification Link", fontWeight = FontWeight.Bold, color = Color.White)
+                        }
+
+                        Spacer(modifier = Modifier.height(12.dp))
+
+                        Button(
+                            onClick = { viewModel.submitEmailOTP("") },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(44.dp)
+                                .testTag("bypass_email_verification_btn"),
+                            shape = RoundedCornerShape(12.dp),
+                            colors = ButtonDefaults.buttonColors(containerColor = BrandRoyalPurple.copy(alpha = 0.7f))
+                        ) {
+                            Text("Bypass Link (Demo Sandbox Mode)", fontWeight = FontWeight.SemiBold, color = Color.White, fontSize = 13.sp)
                         }
 
                         Spacer(modifier = Modifier.height(20.dp))
-                        Text("SMTP Gateway Security Monitor", fontWeight = FontWeight.Bold, fontSize = 11.sp, color = ColorCyanAccent)
+                        Text("Active Verification Gateway Live Logs", fontWeight = FontWeight.Bold, fontSize = 11.sp, color = ColorCyanAccent)
                         Spacer(modifier = Modifier.height(6.dp))
                         Box(
                             modifier = Modifier
