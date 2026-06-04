@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    
+    <!-- Outer Safe-Zone Container for Icon (66dp Gravitational Center) -->
+    <!-- Stylized Delivery Package/Bag and Collegiate Crest inside the central bounds -->
+    <!-- Safe region is roughly 21 to 87 in coordinates -->
+    
+    <!-- Location Pin Backdrop for Delivery Concept -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M54,23C39.6,23 28,34.6 28,49C28,68.5 54,85 54,85C54,85 80,68.5 80,49C80,34.6 68.4,23 54,23ZM54,61C47.4,61 42,55.6 42,49C42,42.4 47.4,37 54,37C60.6,37 66,42.4 66,49C66,55.6 60.6,61 54,61Z" />
+
+    <!-- inner scooter or speedy collegiate delivery cap wheel -->
+    <path
+        android:fillColor="#7F51E0"
+        android:pathData="M54,41 L61,44 L54,47 L47,44 Z M54,47 L54,57 L61,54 L61,44 Z M54,47 L47,44 L47,54 L54,57 Z" />
+</vector>

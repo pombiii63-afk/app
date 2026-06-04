@@ -1,0 +1,8 @@
+{
+  "name": "Campus Delivery",
+  "description": "A premium peer-to-peer delivery platform for college students to order items and earn money on campus.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
