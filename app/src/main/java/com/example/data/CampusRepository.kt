@@ -16,29 +16,39 @@ class CampusRepository(private val context: Context) {
     private var firestore: FirebaseFirestore
 
     init {
-        // Safe check and programmatic initialization of default FirebaseApp
-        var needsInit = true
+        var isInitialized = false
         try {
             FirebaseApp.getInstance()
-            needsInit = false
-            Log.d("CampusRepository", "Firebase is already initialized.")
+            isInitialized = true
+            Log.d("CampusRepository", "Firebase default instance already configured.")
         } catch (e: IllegalStateException) {
-            needsInit = true
-        }
-
-        if (needsInit) {
             try {
-                val options = FirebaseOptions.Builder()
-                    .setApiKey("AIzaSyB_campus_deliv_fallback_key_2026")
-                    .setApplicationId("1:123456789012:android:abcdef1234567890")
-                    .setProjectId("campus-delivery-rxcpt")
-                    .build()
-                FirebaseApp.initializeApp(context, options)
-                Log.d("CampusRepository", "Firebase initialized programmatically with options")
+                val app = FirebaseApp.initializeApp(context)
+                if (app != null) {
+                    isInitialized = true
+                    Log.d("CampusRepository", "Firebase auto-initialized from standard resource binding.")
+                } else {
+                    Log.w("CampusRepository", "Firebase auto-initialized returned null (resources missing).")
+                }
             } catch (ex: Exception) {
-                Log.e("CampusRepository", "Programmatic Firebase initialization failed: ${ex.message}")
+                Log.e("CampusRepository", "Firebase auto-init failed, trying placeholder fallback to prevent crash: ${ex.message}")
             }
         }
+
+        if (!isInitialized) {
+            try {
+                val options = FirebaseOptions.Builder()
+                    .setApiKey("AIzaSyB-campus-delivery-placeholderKey2")
+                    .setApplicationId("1:123456789012:android:abcdef1234567890")
+                    .setProjectId("campus-delivery-placeholder1")
+                    .build()
+                FirebaseApp.initializeApp(context, options)
+                Log.w("CampusRepository", "Firebase initialized with safe placeholder fallbacks for offline development.")
+            } catch (failedEx: Exception) {
+                Log.e("CampusRepository", "Failed to initialize placeholder Firebase options: ${failedEx.message}")
+            }
+        }
+
         firestore = FirebaseFirestore.getInstance()
     }
 
@@ -245,14 +255,62 @@ class CampusRepository(private val context: Context) {
         }
     }
 
-    suspend fun insertEarning(earning: EarningEntity) {
+    suspend fun insertEarning(earning: EarningEntity, customId: String? = null) {
         try {
-            val ref = firestore.collection("earnings").document()
-            val finalEarning = earning.copy(id = ref.id)
-            ref.set(finalEarning).await()
-            Log.d("CampusRepository", "Earning inserted to Firestore")
+            val docId = customId ?: earning.id.ifBlank { firestore.collection("earnings").document().id }
+            val finalEarning = earning.copy(id = docId)
+            firestore.collection("earnings").document(docId).set(finalEarning).await()
+            Log.d("CampusRepository", "Earning inserted/merged to Firestore with ID: $docId")
         } catch (e: Exception) {
             Log.e("CampusRepository", "Error insertEarning: ${e.message}")
+        }
+    }
+
+    suspend fun acceptOrderTransaction(orderId: String, partnerId: String, partnerName: String): Boolean {
+        return try {
+            val docRef = firestore.collection("orders").document(orderId)
+            firestore.runTransaction { transaction ->
+                val snapshot = transaction.get(docRef)
+                val status = snapshot.getString("status") ?: "PENDING"
+                if (status == "PENDING") {
+                    transaction.update(docRef, mapOf(
+                        "status" to "ACCEPTED",
+                        "deliveryPartnerId" to partnerId,
+                        "deliveryPartnerName" to partnerName
+                    ))
+                    true
+                } else {
+                    false
+                }
+            }.await()
+        } catch (e: Exception) {
+            Log.e("CampusRepository", "Error running acceptOrderTransaction: ${e.message}")
+            false
+        }
+    }
+
+    suspend fun verifyQRAndDeliverTransaction(orderId: String, scannedCode: String): Pair<Boolean, OrderEntity?> {
+        return try {
+            val docRef = firestore.collection("orders").document(orderId)
+            var originalOrder: OrderEntity? = null
+            val isSuccess = firestore.runTransaction { transaction ->
+                val snapshot = transaction.get(docRef)
+                val orderObj = snapshot.toObject(OrderEntity::class.java)?.copy(id = snapshot.id)
+                originalOrder = orderObj
+                if (orderObj != null && orderObj.status == "PICKED_UP" && orderObj.qrCodeToken == scannedCode.trim()) {
+                    transaction.update(docRef, mapOf(
+                        "status" to "DELIVERED",
+                        "escrowStatus" to "RELEASED"
+                    ))
+                    true
+                } else {
+                    false
+                }
+            }.await()
+            Pair(isSuccess, originalOrder)
+        } catch (e: Exception) {
+            Log.e("CampusRepository", "Error in verifyQRAndDeliverTransaction: ${e.message}")
+            Pair(false, null)
         }
     }
 

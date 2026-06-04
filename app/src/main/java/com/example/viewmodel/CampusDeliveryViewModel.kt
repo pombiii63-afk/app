@@ -29,16 +29,18 @@ class CampusDeliveryViewModel(application: Application) : AndroidViewModel(appli
     private val repository: CampusRepository = CampusRepository(application)
     
     init {
-        // Seed default orders & profiles to showcase dynamic, lively university feed on first launch
-        viewModelScope.launch {
-            repository.allOrdersFlow.first().let { currentList ->
-                if (currentList.isEmpty()) {
-                    seedDefaultOrders()
+        // Seed default orders & profiles ONLY in local DEBUG builds for developer visual testing, keeping PROD clean
+        if (com.example.BuildConfig.DEBUG) {
+            viewModelScope.launch {
+                repository.allOrdersFlow.first().let { currentList ->
+                    if (currentList.isEmpty()) {
+                        seedDefaultOrders()
+                    }
                 }
-            }
-            repository.allProfilesFlow.first().let { currentList ->
-                if (currentList.isEmpty()) {
-                    seedDefaultProfiles()
+                repository.allProfilesFlow.first().let { currentList ->
+                    if (currentList.isEmpty()) {
+                        seedDefaultProfiles()
+                    }
                 }
             }
         }
@@ -325,7 +327,12 @@ class CampusDeliveryViewModel(application: Application) : AndroidViewModel(appli
         )
 
         val checkout = Checkout()
-        checkout.setKeyID("rzp_test_campus_deliv_token_2026")
+        val rzpKey = try {
+            com.example.BuildConfig.RAZORPAY_KEY_ID.ifBlank { "rzp_test_campus_deliv_token_2026" }
+        } catch (_: Throwable) {
+            "rzp_test_campus_deliv_token_2026"
+        }
+        checkout.setKeyID(rzpKey)
 
         try {
             val options = org.json.JSONObject()
@@ -436,16 +443,11 @@ class CampusDeliveryViewModel(application: Application) : AndroidViewModel(appli
         if (currentProfile.role != "PARTNER") return
         
         viewModelScope.launch {
-            val orders = allOrders.value
-            val order = orders.find { it.id == orderId }
-            if (order != null && order.status == "PENDING") {
-                val updated = order.copy(
-                    status = "ACCEPTED",
-                    deliveryPartnerId = currentProfile.registrationNumber,
-                    deliveryPartnerName = currentProfile.name
-                )
-                repository.updateOrder(updated)
-            }
+            repository.acceptOrderTransaction(
+                orderId = orderId,
+                partnerId = currentProfile.registrationNumber,
+                partnerName = currentProfile.name
+            )
         }
     }
 
@@ -461,41 +463,38 @@ class CampusDeliveryViewModel(application: Application) : AndroidViewModel(appli
     }
 
     fun verifyQRAndDeliver(orderId: String, scannedCode: String): Boolean {
-        var isSuccess = false
         val orders = allOrders.value
         val order = orders.find { it.id == orderId }
         
         if (order != null && order.status == "PICKED_UP" && order.qrCodeToken == scannedCode.trim()) {
-            isSuccess = true
             viewModelScope.launch {
-                val updated = order.copy(
-                    status = "DELIVERED",
-                    escrowStatus = "RELEASED"
-                )
-                repository.updateOrder(updated)
-                
-                // Credit earnings instantly
-                order.deliveryPartnerId?.let { partnerId ->
-                    val earning = EarningEntity(
-                        partnerId = partnerId,
-                        amount = order.deliveryFee,
-                        description = "Delivery Completed: ${order.itemName}"
-                    )
-                    repository.insertEarning(earning)
-                    
-                    val profiles = allProfiles.value
-                    val partnerProfile = profiles.find { it.registrationNumber == partnerId }
-                    if (partnerProfile != null) {
-                        val updatedPartner = partnerProfile.copy(
-                            completedDeliveriesCount = partnerProfile.completedDeliveriesCount + 1,
-                            reliabilityScore = minOf(100, partnerProfile.reliabilityScore + 2)
+                val (verified, orderObj) = repository.verifyQRAndDeliverTransaction(orderId, scannedCode)
+                if (verified && orderObj != null) {
+                    val partnerId = orderObj.deliveryPartnerId ?: ""
+                    if (partnerId.isNotBlank()) {
+                        val earning = EarningEntity(
+                            id = orderId, // prevents duplicates during ledger merges
+                            partnerId = partnerId,
+                            amount = orderObj.deliveryFee,
+                            description = "Delivery Completed: ${orderObj.itemName}"
                         )
-                        repository.insertProfile(updatedPartner)
+                        repository.insertEarning(earning, customId = orderId)
+                        
+                        val profiles = allProfiles.value
+                        val partnerProfile = profiles.find { it.registrationNumber == partnerId }
+                        if (partnerProfile != null) {
+                            val updatedPartner = partnerProfile.copy(
+                                completedDeliveriesCount = partnerProfile.completedDeliveriesCount + 1,
+                                reliabilityScore = minOf(100, partnerProfile.reliabilityScore + 2)
+                            )
+                            repository.insertProfile(updatedPartner)
+                        }
                     }
                 }
             }
+            return true
         }
-        return isSuccess
+        return false
     }
 
     fun cancelOrder(orderId: String) {
