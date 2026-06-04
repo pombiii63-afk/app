@@ -14,10 +14,21 @@ import com.example.ui.theme.MyApplicationTheme
 import com.example.viewmodel.CampusDeliveryViewModel
 import com.google.firebase.FirebaseApp
 import com.google.firebase.FirebaseOptions
+import com.razorpay.Checkout
+import com.razorpay.PaymentResultListener
 
-class MainActivity : ComponentActivity() {
+class MainActivity : ComponentActivity(), PaymentResultListener {
+    private var viewModelRef: CampusDeliveryViewModel? = null
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        
+        // Preload Razorpay to optimize transaction initiation speed
+        try {
+            Checkout.preload(applicationContext)
+        } catch (e: Exception) {
+            Log.e("MainActivity", "Razorpay preload err: ${e.message}")
+        }
         
         // Initialize Firebase programmatically on start to ensure safety
         try {
@@ -41,6 +52,7 @@ class MainActivity : ComponentActivity() {
         setContent {
             MyApplicationTheme {
                 val viewModel: CampusDeliveryViewModel = viewModel()
+                viewModelRef = viewModel
                 val currentScreen by viewModel.currentScreen.collectAsState()
                 
                 if (currentScreen == "admin") {
@@ -50,5 +62,15 @@ class MainActivity : ComponentActivity() {
                 }
             }
         }
+    }
+
+    override fun onPaymentSuccess(razorpayPaymentId: String?) {
+        Log.d("MainActivity", "Razorpay Transaction Success: $razorpayPaymentId")
+        viewModelRef?.onRazorpayPaymentSuccess(razorpayPaymentId ?: "TXN_OK")
+    }
+
+    override fun onPaymentError(errorCode: Int, errorMessage: String?) {
+        Log.e("MainActivity", "Razorpay Transaction Failed: code=$errorCode, msg=$errorMessage")
+        viewModelRef?.onRazorpayPaymentFailure(errorMessage ?: "Escrow transaction rejected by node.")
     }
 }

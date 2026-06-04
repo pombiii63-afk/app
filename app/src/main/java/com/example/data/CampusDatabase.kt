@@ -7,6 +7,10 @@ data class OrderEntity(
     val itemName: String = "",
     val pickupLocation: String = "",
     val dropLocation: String = "",
+    val pickupLat: Double = 12.9716,
+    val pickupLng: Double = 79.1594,
+    val dropLat: Double = 12.9702,
+    val dropLng: Double = 79.1585,
     val deliveryFee: Double = 0.0,
     val status: String = "PENDING", // PENDING, ACCEPTED, PICKED_UP, DELIVERED, CANCELLED
     val customerPhone: String = "",
@@ -63,4 +67,16 @@ data class NotificationEntity(
     val message: String = "",
     val timestamp: Long = System.currentTimeMillis(),
     val isRead: Boolean = false
+)
+
+data class OrderCreationData(
+    val itemName: String = "",
+    val pickup: String = "",
+    val drop: String = "",
+    val fee: Double = 0.0,
+    val notes: String = "",
+    val pickupLat: Double = 0.0,
+    val pickupLng: Double = 0.0,
+    val dropLat: Double = 0.0,
+    val dropLng: Double = 0.0
 )

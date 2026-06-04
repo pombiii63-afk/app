@@ -46,6 +46,10 @@ import com.example.data.ReportEntity
 import com.example.data.UserProfileEntity
 import com.example.viewmodel.AuthState
 import com.example.viewmodel.CampusDeliveryViewModel
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.foundation.gestures.detectTapGestures
+import android.app.Activity
+import android.util.Log
 import java.text.SimpleDateFormat
 import java.util.*
 
@@ -440,8 +444,13 @@ fun AuthScreen(viewModel: CampusDeliveryViewModel) {
                         )
                         Spacer(modifier = Modifier.height(20.dp))
 
+                        val context = LocalContext.current
                         Button(
-                            onClick = { viewModel.verifyFirebaseEmailStatus() },
+                            onClick = { 
+                                viewModel.verifyFirebaseEmailStatus { success, message ->
+                                    android.widget.Toast.makeText(context, message, android.widget.Toast.LENGTH_LONG).show()
+                                }
+                            },
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .height(52.dp)
@@ -450,20 +459,6 @@ fun AuthScreen(viewModel: CampusDeliveryViewModel) {
                             colors = ButtonDefaults.buttonColors(containerColor = ColorSuccess)
                         ) {
                             Text("I Clicked the Verification Link", fontWeight = FontWeight.Bold, color = Color.White)
-                        }
-
-                        Spacer(modifier = Modifier.height(12.dp))
-
-                        Button(
-                            onClick = { viewModel.submitEmailOTP("") },
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(44.dp)
-                                .testTag("bypass_email_verification_btn"),
-                            shape = RoundedCornerShape(12.dp),
-                            colors = ButtonDefaults.buttonColors(containerColor = BrandRoyalPurple.copy(alpha = 0.7f))
-                        ) {
-                            Text("Bypass Link (Demo Sandbox Mode)", fontWeight = FontWeight.SemiBold, color = Color.White, fontSize = 13.sp)
                         }
 
                         Spacer(modifier = Modifier.height(20.dp))
@@ -1023,6 +1018,15 @@ fun CreateRequestScreen(viewModel: CampusDeliveryViewModel) {
     var pTipAmt by remember { mutableStateOf("3.00") }
     var pInstructions by remember { mutableStateOf("") }
 
+    // Coordinates states for our Maps geofence
+    var pPickupLat by remember { mutableStateOf(12.9716) }
+    var pPickupLng by remember { mutableStateOf(79.1594) }
+    var pDropLat by remember { mutableStateOf(12.9702) }
+    var pDropLng by remember { mutableStateOf(79.1585) }
+
+    // Control which pin updates upon clicking the map: PICKUP or DROP
+    var mapSelectMode by remember { mutableStateOf("PICKUP") }
+
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -1036,16 +1040,158 @@ fun CreateRequestScreen(viewModel: CampusDeliveryViewModel) {
             color = ThemeTextPrimary
         )
         Text(
-            text = "Input pickup items, location points, and an attractive delivery reward to grab available student riders fast.",
+            text = "Position your geofences on the interactive map, input specifications, and finalize secure escrow payment.",
             style = MaterialTheme.typography.bodySmall.copy(color = ThemeTextMuted)
         )
-        Spacer(modifier = Modifier.height(24.dp))
+        Spacer(modifier = Modifier.height(16.dp))
 
+        // --- Geofence Interactive Map Panel ---
         Card(
             modifier = Modifier.fillMaxWidth(),
             colors = CardDefaults.cardColors(containerColor = ThemeCardBg),
             border = BorderStroke(1.dp, CardBorderColorLight),
-            shape = RoundedCornerShape(24.dp)
+            shape = RoundedCornerShape(20.dp)
+        ) {
+            Column(modifier = Modifier.padding(14.dp)) {
+                Text(
+                    text = "Map Marker Pinning Geofence",
+                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                    color = ThemeTextPrimary
+                )
+                Text(
+                    text = "Select active point, then TAP the campus map to drop standard coordinates instantly.",
+                    style = MaterialTheme.typography.bodySmall.copy(color = ThemeTextMuted),
+                    modifier = Modifier.padding(bottom = 12.dp)
+                )
+
+                // Selection Toggles
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Button(
+                        onClick = { mapSelectMode = "PICKUP" },
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = if (mapSelectMode == "PICKUP") ColorCyanAccent else Color.DarkGray
+                        ),
+                        modifier = Modifier.weight(1f),
+                        shape = RoundedCornerShape(8.dp)
+                    ) {
+                        Text("Set Pickup (Blue PIN)", fontSize = 11.sp, color = Color.White)
+                    }
+                    Button(
+                        onClick = { mapSelectMode = "DROP" },
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = if (mapSelectMode == "DROP") ColorSuccess else Color.DarkGray
+                        ),
+                        modifier = Modifier.weight(1f),
+                        shape = RoundedCornerShape(8.dp)
+                    ) {
+                        Text("Set Drop-off (Green PIN)", fontSize = 11.sp, color = Color.White)
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(12.dp))
+
+                // Interactive Vector GPS Mapping Board with pointerInput tap detectors
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(240.dp)
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(Color(0xFF0F172A)) // Dark slate background
+                        .border(BorderStroke(1.dp, CardBorderColorLight), RoundedCornerShape(12.dp))
+                        .pointerInput(mapSelectMode) {
+                            detectTapGestures { offset ->
+                                val latMin = 12.9650
+                                val latMax = 12.9750
+                                val lngMin = 79.1500
+                                val lngMax = 79.1700
+                                
+                                val calculatedLat = latMax - (offset.y / size.height) * (latMax - latMin)
+                                val calculatedLng = lngMin + (offset.x / size.width) * (lngMax - lngMin)
+                                
+                                if (mapSelectMode == "PICKUP") {
+                                    pPickupLat = calculatedLat
+                                    pPickupLng = calculatedLng
+                                    pPickupLoc = "Pin @ (${String.format("%.4f", calculatedLat)}, ${String.format("%.4f", calculatedLng)})"
+                                } else {
+                                    pDropLat = calculatedLat
+                                    pDropLng = calculatedLng
+                                    pDropLoc = "Pin @ (${String.format("%.4f", calculatedLat)}, ${String.format("%.4f", calculatedLng)})"
+                                }
+                            }
+                        }
+                ) {
+                    Canvas(modifier = Modifier.fillMaxSize()) {
+                        val w = size.width
+                        val h = size.height
+
+                        // Draw architectural grid layout (Campus pathways simulation)
+                        drawLine(Color(0xFF1E293B), start = Offset(w * 0.2f, 0f), end = Offset(w * 0.2f, h), strokeWidth = 5f)
+                        drawLine(Color(0xFF1E293B), start = Offset(w * 0.5f, 0f), end = Offset(w * 0.5f, h), strokeWidth = 5f)
+                        drawLine(Color(0xFF1E293B), start = Offset(w * 0.8f, 0f), end = Offset(w * 0.8f, h), strokeWidth = 5f)
+                        drawLine(Color(0xFF1E293B), start = Offset(0f, h * 0.3f), end = Offset(w, h * 0.3f), strokeWidth = 5f)
+                        drawLine(Color(0xFF1E293B), start = Offset(0f, h * 0.7f), end = Offset(w, h * 0.7f), strokeWidth = 5f)
+
+                        val latMin = 12.9650
+                        val latMax = 12.9750
+                        val lngMin = 79.1500
+                        val lngMax = 79.1700
+
+                        fun mapCoordsToOffset(lat: Double, lng: Double): Offset {
+                            val x = ((lng - lngMin) / (lngMax - lngMin)).coerceIn(0.0, 1.0) * w
+                            val y = (1.0 - (lat - latMin) / (latMax - latMin)).coerceIn(0.0, 1.0) * h
+                            return Offset(x.toFloat(), y.toFloat())
+                        }
+
+                        val pickupOffset = mapCoordsToOffset(pPickupLat, pPickupLng)
+                        val dropOffset = mapCoordsToOffset(pDropLat, pDropLng)
+
+                        // Draw Route Line
+                        drawLine(
+                            color = ColorCyanAccent.copy(alpha = 0.8f),
+                            start = pickupOffset,
+                            end = dropOffset,
+                            strokeWidth = 6f
+                        )
+
+                        // Draw Pickup circle pinpoint (Blue/Cyan)
+                        drawCircle(ColorCyanAccent, radius = 9f, center = pickupOffset)
+                        drawCircle(ColorCyanAccent.copy(alpha = 0.3f), radius = 22f, center = pickupOffset)
+
+                        // Draw Drop circle pinpoint (Green)
+                        drawCircle(ColorSuccess, radius = 9f, center = dropOffset)
+                        drawCircle(ColorSuccess.copy(alpha = 0.3f), radius = 22f, center = dropOffset)
+                    }
+
+                    // Floating instructions / Info badge over canvas
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.BottomStart)
+                            .padding(10.dp)
+                            .background(Color.Black.copy(alpha = 0.8f), RoundedCornerShape(6.dp))
+                            .padding(horizontal = 8.dp, vertical = 4.dp)
+                    ) {
+                        Text(
+                            text = "Aesthetic Vector Mapper (Tap to pinpoint)",
+                            color = ThemeTextSecondary,
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                }
+            }
+        }
+
+        Spacer(modifier = Modifier.height(16.dp))
+
+        // --- Specifications Specifications Fields Form ---
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            colors = CardDefaults.cardColors(containerColor = ThemeCardBg),
+            border = BorderStroke(1.dp, CardBorderColorLight),
+            shape = RoundedCornerShape(20.dp)
         ) {
             Column(modifier = Modifier.padding(16.dp)) {
                 // Item Description
@@ -1053,49 +1199,59 @@ fun CreateRequestScreen(viewModel: CampusDeliveryViewModel) {
                     value = pItemName,
                     onValueChange = { pItemName = it },
                     label = { Text("What needs delivering?", color = ThemeTextSecondary) },
-                    placeholder = { Text("e.g. Medium Pepperoni Pizza, Printed Notes", color = ThemeTextMuted) },
+                    placeholder = { Text("e.g. Science Lab Files, Pizza Carton", color = ThemeTextMuted) },
                     leadingIcon = { Icon(Icons.Default.ShoppingBag, contentDescription = null, tint = BrandRoyalPurple) },
                     shape = RoundedCornerShape(12.dp),
                     modifier = Modifier.fillMaxWidth().testTag("item_name_input"),
                     singleLine = true
                 )
 
-                Spacer(modifier = Modifier.height(16.dp))
+                Spacer(modifier = Modifier.height(14.dp))
 
-                // Pickup location
+                // Pickup location description
                 OutlinedTextField(
                     value = pPickupLoc,
-                    onValueChange = { pPickupLoc = it },
-                    label = { Text("Pickup Location Point", color = ThemeTextSecondary) },
-                    placeholder = { Text("e.g. Science Cafe, Hostel Admin desk", color = ThemeTextMuted) },
-                    leadingIcon = { Icon(Icons.Default.Storefront, contentDescription = null, tint = BrandRoyalPurple) },
+                    onValueChange = { 
+                        pPickupLoc = it 
+                        val coords = viewModel.getCoordinatesForLocation(it)
+                        pPickupLat = coords.first
+                        pPickupLng = coords.second
+                    },
+                    label = { Text("Pickup landmark / detail description", color = ThemeTextSecondary) },
+                    placeholder = { Text("e.g. Science Cafe kiosk, Tech FC-2", color = ThemeTextMuted) },
+                    leadingIcon = { Icon(Icons.Default.Storefront, contentDescription = null, tint = ColorCyanAccent) },
                     shape = RoundedCornerShape(12.dp),
                     modifier = Modifier.fillMaxWidth().testTag("pickup_input"),
                     singleLine = true
                 )
 
-                Spacer(modifier = Modifier.height(16.dp))
+                Spacer(modifier = Modifier.height(14.dp))
 
-                // DropLocation
+                // Drop location description
                 OutlinedTextField(
                     value = pDropLoc,
-                    onValueChange = { pDropLoc = it },
-                    label = { Text("Drop-Off Location Point", color = ThemeTextSecondary) },
-                    placeholder = { Text("e.g. Library Block B, Room 204", color = ThemeTextMuted) },
+                    onValueChange = { 
+                        pDropLoc = it 
+                        val coords = viewModel.getCoordinatesForLocation(it)
+                        pDropLat = coords.first
+                        pDropLng = coords.second
+                    },
+                    label = { Text("Drop-off landmark / detail description", color = ThemeTextSecondary) },
+                    placeholder = { Text("e.g. Girls Hostel Block A Room 202", color = ThemeTextMuted) },
                     leadingIcon = { Icon(Icons.Default.Home, contentDescription = null, tint = ColorSuccess) },
                     shape = RoundedCornerShape(12.dp),
                     modifier = Modifier.fillMaxWidth().testTag("drop_input"),
                     singleLine = true
                 )
 
-                Spacer(modifier = Modifier.height(16.dp))
+                Spacer(modifier = Modifier.height(14.dp))
 
-                // Reward tip entry
+                // Tip/Reward pay
                 OutlinedTextField(
                     value = pTipAmt,
                     onValueChange = { pTipAmt = it },
-                    label = { Text("Delivery Incentive / Reward Pay ($)", color = ThemeTextSecondary) },
-                    placeholder = { Text("3.00", color = ThemeTextMuted) },
+                    label = { Text("Escrow Delivery Reward Pay (INR equivalent)", color = ThemeTextSecondary) },
+                    placeholder = { Text("150.00", color = ThemeTextMuted) },
                     leadingIcon = { Icon(Icons.Default.AttachMoney, contentDescription = null, tint = ColorSuccess) },
                     shape = RoundedCornerShape(12.dp),
                     modifier = Modifier.fillMaxWidth().testTag("tip_input"),
@@ -1103,32 +1259,40 @@ fun CreateRequestScreen(viewModel: CampusDeliveryViewModel) {
                     singleLine = true
                 )
 
-                Spacer(modifier = Modifier.height(16.dp))
+                Spacer(modifier = Modifier.height(14.dp))
 
-                // Special notes/instructions
+                // Special Instructions
                 OutlinedTextField(
                     value = pInstructions,
                     onValueChange = { pInstructions = it },
-                    label = { Text("Special notes / instructions (optional)", color = ThemeTextSecondary) },
-                    placeholder = { Text("e.g. Call when near elevator; ask cashier for extra ketchup.", color = ThemeTextMuted) },
+                    label = { Text("Special Rider notes (optional)", color = ThemeTextSecondary) },
+                    placeholder = { Text("e.g. knock twice; keep pizza flat.", color = ThemeTextMuted) },
                     shape = RoundedCornerShape(12.dp),
                     modifier = Modifier.fillMaxWidth().testTag("notes_input"),
                     maxLines = 3
                 )
 
-                Spacer(modifier = Modifier.height(24.dp))
+                Spacer(modifier = Modifier.height(20.dp))
 
-                // Submit button
+                // Escrow payments dispatch CTA
+                val activity = LocalContext.current as? Activity
                 Button(
                     onClick = {
-                        val feeDouble = pTipAmt.toDoubleOrNull() ?: 3.00
-                        viewModel.createOrder(
-                            itemName = pItemName,
-                            pickup = pPickupLoc,
-                            drop = pDropLoc,
-                            fee = feeDouble,
-                            notes = pInstructions
-                        )
+                        val feeDouble = pTipAmt.toDoubleOrNull() ?: 150.0
+                        if (activity != null) {
+                            viewModel.initiateOrderPayment(
+                                activity = activity,
+                                itemName = pItemName,
+                                pickup = pPickupLoc,
+                                drop = pDropLoc,
+                                fee = feeDouble,
+                                notes = pInstructions,
+                                pickupLat = pPickupLat,
+                                pickupLng = pPickupLng,
+                                dropLat = pDropLat,
+                                dropLng = pDropLng
+                            )
+                        }
                     },
                     enabled = pItemName.isNotBlank() && pPickupLoc.isNotBlank() && pDropLoc.isNotBlank() && pTipAmt.isNotBlank(),
                     modifier = Modifier
@@ -1138,7 +1302,7 @@ fun CreateRequestScreen(viewModel: CampusDeliveryViewModel) {
                     shape = RoundedCornerShape(12.dp),
                     colors = ButtonDefaults.buttonColors(containerColor = BrandRoyalPurple)
                 ) {
-                    Text("Broadcast Order Request", fontWeight = FontWeight.Bold, color = Color.White)
+                    Text("Pre-Pay Escrow & Broadcast Order", fontWeight = FontWeight.Bold, color = Color.White)
                 }
             }
         }
@@ -1590,83 +1754,85 @@ fun OrderDetailScreen(viewModel: CampusDeliveryViewModel) {
 
         HorizontalDivider(color = CardBorderColorLight)
 
-        // Custom Google Maps Interactive Routing Canvas (Presents campus map, route pins & animated scooter router!)
         Card(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(16.dp)
-                .height(200.dp),
-            colors = CardDefaults.cardColors(containerColor = BrandLightPurple),
+                .height(280.dp),
+            colors = CardDefaults.cardColors(containerColor = ThemeCardBg),
             border = BorderStroke(1.dp, CardBorderColorLight),
             shape = RoundedCornerShape(16.dp)
         ) {
             Box(modifier = Modifier.fillMaxSize()) {
-                Canvas(modifier = Modifier.fillMaxSize()) {
-                    val w = size.width
-                    val h = size.height
+                // Geometric Campus GPS Vector Canvas
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(Color(0xFF0F172A))
+                ) {
+                    Canvas(modifier = Modifier.fillMaxSize()) {
+                        val w = size.width
+                        val h = size.height
 
-                    // Draw stylized college grid pathways / roads
-                    val roadPath = Path().apply {
-                        moveTo(w * 0.15f, h * 0.35f)
-                        lineTo(w * 0.45f, h * 0.35f)
-                        lineTo(w * 0.45f, h * 0.75f)
-                        lineTo(w * 0.85f, h * 0.75f)
+                        // Pathway intersections
+                        drawLine(Color(0xFF1E293B), start = Offset(w * 0.2f, 0f), end = Offset(w * 0.2f, h), strokeWidth = 5f)
+                        drawLine(Color(0xFF1E293B), start = Offset(w * 0.5f, 0f), end = Offset(w * 0.5f, h), strokeWidth = 5f)
+                        drawLine(Color(0xFF1E293B), start = Offset(w * 0.8f, 0f), end = Offset(w * 0.8f, h), strokeWidth = 5f)
+                        drawLine(Color(0xFF1E293B), start = Offset(0f, h * 0.3f), end = Offset(w, h * 0.3f), strokeWidth = 5f)
+                        drawLine(Color(0xFF1E293B), start = Offset(0f, h * 0.7f), end = Offset(w, h * 0.7f), strokeWidth = 5f)
+
+                        val latMin = 12.9650
+                        val latMax = 12.9750
+                        val lngMin = 79.1500
+                        val lngMax = 79.1700
+
+                        fun mapCoordsToOffset(lat: Double, lng: Double): Offset {
+                            val x = ((lng - lngMin) / (lngMax - lngMin)).coerceIn(0.0, 1.0) * w
+                            val y = (1.0 - (lat - latMin) / (latMax - latMin)).coerceIn(0.0, 1.0) * h
+                            return Offset(x.toFloat(), y.toFloat())
+                        }
+
+                        val pickupOffset = mapCoordsToOffset(order!!.pickupLat, order!!.pickupLng)
+                        val dropOffset = mapCoordsToOffset(order!!.dropLat, order!!.dropLng)
+
+                        // Draw Route Line
+                        drawLine(
+                            color = ColorCyanAccent,
+                            start = pickupOffset,
+                            end = dropOffset,
+                            strokeWidth = 6f
+                        )
+
+                        // Draw Pickup Circle Node
+                        drawCircle(ColorCyanAccent, radius = 9f, center = pickupOffset)
+                        drawCircle(ColorCyanAccent.copy(alpha = 0.3f), radius = 20f, center = pickupOffset)
+
+                        // Draw Drop Circle Node
+                        drawCircle(ColorSuccess, radius = 9f, center = dropOffset)
+                        drawCircle(ColorSuccess.copy(alpha = 0.3f), radius = 20f, center = dropOffset)
+
+                        // Vehicle Position offset
+                        val progress = when (order!!.status) {
+                            "PENDING" -> 0.0f
+                            "ACCEPTED" -> 0.3f
+                            "PICKED_UP" -> 0.7f
+                            "DELIVERED" -> 1.0f
+                            else -> 0.0f
+                        }
+
+                        val vehicleOffset = Offset(
+                            pickupOffset.x + (dropOffset.x - pickupOffset.x) * progress,
+                            pickupOffset.y + (dropOffset.y - pickupOffset.y) * progress
+                        )
+
+                        // Draw Runner Scooter pin (Orange highlighter)
+                        drawCircle(ColorWarning, radius = 12f, center = vehicleOffset)
+                        drawCircle(Color.Black, radius = 6f, center = vehicleOffset)
+                        drawCircle(ColorCyanAccent, radius = 3f, center = vehicleOffset)
                     }
-                    drawPath(path = roadPath, color = Color(0xFF334155), style = Stroke(width = 14f))
-
-                    // Secondary college pathway intersections
-                    drawLine(Color(0xFF1E293B), start = Offset(w * 0.45f, 0f), end = Offset(w * 0.45f, h), strokeWidth = 6f)
-                    drawLine(Color(0xFF1E293B), start = Offset(0f, h * 0.75f), end = Offset(w, h * 0.75f), strokeWidth = 6f)
-
-                    val pickupOffset = Offset(w * 0.15f, h * 0.35f)
-                    val dropOffset = Offset(w * 0.85f, h * 0.75f)
-
-                    // Draw route line
-                    val routePath = Path().apply {
-                        moveTo(pickupOffset.x, pickupOffset.y)
-                        lineTo(w * 0.45f, h * 0.35f)
-                        lineTo(w * 0.45f, h * 0.75f)
-                        lineTo(dropOffset.x, dropOffset.y)
-                    }
-                    drawPath(path = routePath, color = ColorCyanAccent, style = Stroke(width = 6f, pathEffect = PathEffect.dashPathEffect(floatArrayOf(12f, 12f), 0f)))
-
-                    // Draw coordinates pinpoint circles
-                    drawCircle(color = ColorCyanAccent, radius = 12f, center = pickupOffset)
-                    drawCircle(color = ColorCyanAccent, radius = 4f, center = pickupOffset)
-
-                    drawCircle(color = ColorSuccess, radius = 12f, center = dropOffset)
-                    drawCircle(color = ColorSuccess, radius = 4f, center = dropOffset)
-
-                    // Animate a delivery vehicle representation along the route based on current state!
-                    val vehiclePoint = when (order!!.status) {
-                        "PENDING" -> pickupOffset
-                        "ACCEPTED" -> Offset(w * 0.35f, h * 0.35f)
-                        "PICKED_UP" -> Offset(w * 0.45f, h * 0.55f)
-                        "DELIVERED" -> dropOffset
-                        else -> pickupOffset
-                    }
-                    drawCircle(color = ColorWarning, radius = 16f, center = vehiclePoint)
-                    drawCircle(color = Color.Black, radius = 8f, center = vehiclePoint)
-                    drawCircle(color = ColorCyanAccent, radius = 4f, center = vehiclePoint)
                 }
 
-                // Landmarks labeling placed as high-performance Composable texts directly over the canvas
-                Text(
-                    text = "Main Library Annex",
-                    color = ThemeTextMuted,
-                    fontSize = 10.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    modifier = Modifier.align(Alignment.TopStart).padding(start = 24.dp, top = 30.dp)
-                )
-                Text(
-                    text = "Hostel Dorm Block-C",
-                    color = ThemeTextMuted,
-                    fontSize = 10.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    modifier = Modifier.align(Alignment.BottomEnd).padding(end = 24.dp, bottom = 44.dp)
-                )
-
-                // Pins Overlay Labeling for instant cognitive understanding
+                // Landmark label overlay overlays
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -1683,7 +1849,7 @@ fun OrderDetailScreen(viewModel: CampusDeliveryViewModel) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Box(modifier = Modifier.size(6.dp).clip(CircleShape).background(ColorCyanAccent))
                             Spacer(modifier = Modifier.width(6.dp))
-                            Text("Pickup: ${order!!.pickupLocation}", color = ThemeTextPrimary, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                            Text("Pickup: " + order!!.pickupLocation.take(15) + "...", color = ThemeTextPrimary, fontSize = 9.sp, fontWeight = FontWeight.Bold)
                         }
                     }
 
@@ -1696,16 +1862,16 @@ fun OrderDetailScreen(viewModel: CampusDeliveryViewModel) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Box(modifier = Modifier.size(6.dp).clip(CircleShape).background(ColorSuccess))
                             Spacer(modifier = Modifier.width(6.dp))
-                            Text("Drop: ${order!!.dropLocation}", color = ThemeTextPrimary, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                            Text("Drop: " + order!!.dropLocation.take(15) + "...", color = ThemeTextPrimary, fontSize = 9.sp, fontWeight = FontWeight.Bold)
                         }
                     }
                 }
 
-                // Status banner on bottom
+                // Live status info banner overlay
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .background(Color.Black.copy(alpha = 0.5f))
+                        .background(Color.Black.copy(alpha = 0.7f))
                         .align(Alignment.BottomCenter)
                         .padding(8.dp)
                 ) {
@@ -1714,12 +1880,12 @@ fun OrderDetailScreen(viewModel: CampusDeliveryViewModel) {
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Text("Live Courier Routing", fontSize = 11.sp, color = ThemeTextSecondary)
+                        Text("Interactive Campus GPS Tracker", fontSize = 10.sp, color = ThemeTextSecondary)
                         Text(
                             text = when (order!!.status) {
                                 "PENDING" -> "Awaiting Acceptance"
-                                "ACCEPTED" -> "Partner En Route to Pickup"
-                                "PICKED_UP" -> "In Transit with Package"
+                                "ACCEPTED" -> "Partner en route to items"
+                                "PICKED_UP" -> "Courier In-Transit"
                                 "DELIVERED" -> "Delivered Safe"
                                 else -> "Cancelled"
                             },
@@ -1978,8 +2144,37 @@ fun OrderDetailScreen(viewModel: CampusDeliveryViewModel) {
                         Spacer(modifier = Modifier.height(16.dp))
 
                         if (!showScanOverlay) {
+                            val context = LocalContext.current
                             Button(
-                                onClick = { showScanOverlay = true },
+                                onClick = { 
+                                    try {
+                                        val scanner = com.google.mlkit.vision.codescanner.GmsBarcodeScanning.getClient(context)
+                                        scanner.startScan()
+                                            .addOnSuccessListener { barcode ->
+                                                val rawValue = barcode.rawValue
+                                                if (!rawValue.isNullOrBlank()) {
+                                                    val verified = viewModel.verifyQRAndDeliver(order!!.id, rawValue)
+                                                    if (verified) {
+                                                        qrVerifySuccessMessage = "Secure Handshake matching! Escrow funds released to your wallet."
+                                                        qrVerifyErrorMessage = null
+                                                        showScanOverlay = false
+                                                    } else {
+                                                        qrVerifyErrorMessage = "Validation Error: Scanned token did not match order sign status."
+                                                        qrVerifySuccessMessage = null
+                                                    }
+                                                }
+                                            }
+                                            .addOnFailureListener { ex ->
+                                                Log.e("CampusDeliveryAuth", "Google Scanner unsupported/canceled: ${ex.message}")
+                                                qrVerifyErrorMessage = "Google Play Services scanner unavailable in this emulator. Falling back to Live Camera simulator."
+                                                showScanOverlay = true
+                                            }
+                                    } catch (e: Exception) {
+                                        Log.e("CampusDeliveryAuth", "Google Code scanner throw: ${e.message}")
+                                        qrVerifyErrorMessage = "Play Services scanning API error. Falling back to Camera Simulator."
+                                        showScanOverlay = true
+                                    }
+                                },
                                 colors = ButtonDefaults.buttonColors(containerColor = BrandRoyalPurple),
                                 modifier = Modifier.fillMaxWidth()
                             ) {

@@ -13,6 +13,7 @@ import com.google.firebase.auth.PhoneAuthOptions
 import com.google.firebase.auth.PhoneAuthProvider
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
+import com.razorpay.Checkout
 import java.util.concurrent.TimeUnit
 
 sealed interface AuthState {
@@ -98,13 +99,18 @@ class CampusDeliveryViewModel(application: Application) : AndroidViewModel(appli
 
                 override fun onVerificationFailed(e: FirebaseException) {
                     Log.e("CampusDeliveryAuth", "Phone Verification failed: ${e.message}")
-                    // Safety simulated bypass log in console 
+                    val errorLogs = listOf(
+                        "❌ [Firebase Auth] Verification Failed!",
+                        "❌ Error: ${e.message}",
+                        "⚠️ Please register this phone number as a Test Phone in the Firebase Auth console."
+                    )
+                    _authState.value = AuthState.CodeSent(cleaned, "", errorLogs)
                 }
 
                 override fun onCodeSent(verificationId: String, token: PhoneAuthProvider.ForceResendingToken) {
                     val logs = listOf(
                         "🔥 [Firebase Auth] Connected to Google Mobile Telecom Gateway...",
-                        "🔥 [Firebase Auth] Dispatched verification code to (+91) device...",
+                        "🔥 [Firebase Auth] Dispatched real SMS verification code to (+91) device...",
                         "🔥 [Secure Signature] Verification ID: $verificationId"
                     )
                     _authState.value = AuthState.CodeSent(cleaned, verificationId, logs)
@@ -121,25 +127,23 @@ class CampusDeliveryViewModel(application: Application) : AndroidViewModel(appli
             try {
                 PhoneAuthProvider.verifyPhoneNumber(options)
             } catch (e: Exception) {
-                // local fallback if simulator fails to execute PhoneAuthProvider
-                val generatedOtp = "123456"
+                Log.e("CampusDeliveryAuth", "verifyPhoneNumber call failure: ${e.message}")
                 val logs = listOf(
-                    "[Sandbox Mode] Bypassing Google SafetyNet check for local emulator...",
-                    "[SMS Dispatcher] Dispatched test OTP: $generatedOtp"
+                    "❌ [Firebase Auth] Provider Execution Failure: ${e.message}"
                 )
-                _authState.value = AuthState.CodeSent(cleaned, "sandbox-verification-id", logs)
+                _authState.value = AuthState.CodeSent(cleaned, "", logs)
             }
+        } else {
+            val logs = listOf(
+                "❌ Incorrect Format: Mobile number must be a real Indian (+91) device with 10 digits."
+            )
+            _authState.value = AuthState.CodeSent(cleaned, "", logs)
         }
     }
 
     fun submitOTP(otpCode: String) {
         val state = authState.value as? AuthState.CodeSent ?: return
-        if (state.verificationId == "sandbox-verification-id") {
-            // Local fallback bypass for unmatched sandbox flexibility
-            if (otpCode == "123456" || otpCode.length >= 6) {
-                completeLocalPhoneSignIn(state.phone)
-            }
-        } else {
+        if (state.verificationId.isNotBlank()) {
             val credential = PhoneAuthProvider.getCredential(state.verificationId, otpCode)
             signInWithPhoneCredential(credential)
         }
@@ -154,6 +158,11 @@ class CampusDeliveryViewModel(application: Application) : AndroidViewModel(appli
                     completeLocalPhoneSignIn(phone)
                 } else {
                     Log.e("CampusDeliveryAuth", "SignIn failed: ${task.exception?.message}")
+                    val state = authState.value as? AuthState.CodeSent
+                    if (state != null) {
+                        val updatedLogs = state.smsLogs + "❌ [Credential Check] Standard verification failed: ${task.exception?.message}"
+                        _authState.value = state.copy(smsLogs = updatedLogs)
+                    }
                 }
             }
     }
@@ -165,7 +174,6 @@ class CampusDeliveryViewModel(application: Application) : AndroidViewModel(appli
                 if (profile.isSuspended) {
                     _authState.value = AuthState.Authenticated(profile)
                 } else if (!profile.isEmailVerified) {
-                    // Send Email Verification if not verified
                     sendCollegeEmailVerification(profile)
                 } else {
                     _authState.value = AuthState.Authenticated(profile)
@@ -216,11 +224,9 @@ class CampusDeliveryViewModel(application: Application) : AndroidViewModel(appli
                                     sendCollegeEmailVerification(newProfile)
                                 }
                         } else {
-                            // Offline sandbox fallback log
                             val logs = listOf(
-                                "📧 [College Mail] Connected to educational identity provider...",
-                                "📧 [Server Handshake] Registered student profile successfully.",
-                                "⚠️ Local preview-sandbox verification link simulated."
+                                "📧 [College Mail] Setting up identity registration...",
+                                "❌ [Firebase Auth] Error registering credentials: ${task.exception?.message}"
                             )
                             _authState.value = AuthState.EmailVerificationPending(newProfile, logs)
                         }
@@ -235,35 +241,23 @@ class CampusDeliveryViewModel(application: Application) : AndroidViewModel(appli
             user.sendEmailVerification().addOnCompleteListener { task ->
                 val logs = mutableListOf<String>()
                 if (task.isSuccessful) {
-                    logs.add("📩 [College Mail] Real Firebase email verification link dispatched to ${profile.email}")
-                    logs.add("📩 [Firebase Auth] Status: Awaiting student inbox handshake.")
+                    logs.add("📩 [College Mail] Verification dispatch succeeded!")
+                    logs.add("📩 Real Firebase verification link delivered to: ${profile.email}")
+                    logs.add("📩 status: Awaiting student verification action in browser/inbox...")
                 } else {
-                    logs.add("⚠️ [Firebase Auth] Programmatic Sandbox Mail sent.")
+                    logs.add("❌ [Firebase Auth] Verification failed to dispatch: ${task.exception?.message}")
                 }
                 _authState.value = AuthState.EmailVerificationPending(profile, logs)
             }
         } else {
             val logs = listOf(
-                "📩 [College Mail] Handshake dispatched safely.",
-                "📩 [Sandbox Bypass] Click status: Awaiting student handshake confirmation."
+                "❌ [Session Error] No active Firebase Auth account session details found."
             )
             _authState.value = AuthState.EmailVerificationPending(profile, logs)
         }
     }
 
-    fun submitEmailOTP(dummyCode: String) {
-        // Direct sandbox local verification
-        val state = authState.value as? AuthState.EmailVerificationPending ?: return
-        viewModelScope.launch {
-            val verifiedProfile = state.profile.copy(isEmailVerified = true)
-            repository.updateProfile(verifiedProfile)
-            _authState.value = AuthState.Authenticated(verifiedProfile)
-            _currentRole.value = verifiedProfile.role
-            _currentScreen.value = "main"
-        }
-    }
-
-    fun verifyFirebaseEmailStatus() {
+    fun verifyFirebaseEmailStatus(onResult: (Boolean, String) -> Unit = { _, _ -> }) {
         val state = authState.value as? AuthState.EmailVerificationPending ?: return
         val user = FirebaseAuth.getInstance().currentUser
         if (user != null) {
@@ -271,32 +265,119 @@ class CampusDeliveryViewModel(application: Application) : AndroidViewModel(appli
                 if (user.isEmailVerified) {
                     viewModelScope.launch {
                         val verifiedProfile = state.profile.copy(isEmailVerified = true)
-                        repository.updateProfile(verifiedProfile)
+                        repository.insertProfile(verifiedProfile)
                         _authState.value = AuthState.Authenticated(verifiedProfile)
                         _currentRole.value = verifiedProfile.role
                         _currentScreen.value = "main"
+                        onResult(true, "Official college email verified successfully!")
                     }
                 } else {
-                    // Sandbox fallback for local stream
-                    viewModelScope.launch {
-                        val verifiedProfile = state.profile.copy(isEmailVerified = true)
-                        repository.updateProfile(verifiedProfile)
-                        _authState.value = AuthState.Authenticated(verifiedProfile)
-                        _currentRole.value = verifiedProfile.role
-                        _currentScreen.value = "main"
-                    }
+                    onResult(false, "Verification link not clicked yet. Please check your educational inbox.")
                 }
             }
         } else {
-            // Local bypass
-            viewModelScope.launch {
-                val verifiedProfile = state.profile.copy(isEmailVerified = true)
-                repository.updateProfile(verifiedProfile)
-                _authState.value = AuthState.Authenticated(verifiedProfile)
-                _currentRole.value = verifiedProfile.role
-                _currentScreen.value = "main"
-            }
+            onResult(false, "No active credential session found.")
         }
+    }
+
+    // --- Geolocation Coordinates Matchers for Campus Map ---
+    fun getCoordinatesForLocation(locationName: String): Pair<Double, Double> {
+        val clean = locationName.trim().lowercase()
+        return when {
+            clean.contains("gate") || clean.contains("visitor") -> Pair(12.9680, 79.1550)
+            clean.contains("sjt") || clean.contains("academic") || clean.contains("block-1") -> Pair(12.9710, 79.1560)
+            clean.contains("library") || clean.contains("reading") || clean.contains("annex") -> Pair(12.9702, 79.1585)
+            clean.contains("fc2") || clean.contains("food court") || clean.contains("cafe") -> Pair(12.9716, 79.1594)
+            clean.contains("boys hostel") || clean.contains("block d") -> Pair(12.9735, 79.1620)
+            clean.contains("girls hostel") || clean.contains("block a") -> Pair(12.9691, 79.1633)
+            else -> Pair(12.9716, 79.1594) // Central Campus Food Court
+        }
+    }
+
+    // --- Razorpay Pre-Payment Escrow Handler ---
+    var pendingOrderData: OrderCreationData? = null
+
+    fun initiateOrderPayment(
+        activity: Activity,
+        itemName: String,
+        pickup: String,
+        drop: String,
+        fee: Double,
+        notes: String,
+        pickupLat: Double,
+        pickupLng: Double,
+        dropLat: Double,
+        dropLng: Double
+    ) {
+        val authStateVal = authState.value as? AuthState.Authenticated ?: return
+        val profile = authStateVal.profile
+        
+        pendingOrderData = OrderCreationData(
+            itemName = itemName,
+            pickup = pickup,
+            drop = drop,
+            fee = fee,
+            notes = notes,
+            pickupLat = pickupLat,
+            pickupLng = pickupLng,
+            dropLat = dropLat,
+            dropLng = dropLng
+        )
+
+        val checkout = Checkout()
+        checkout.setKeyID("rzp_test_campus_deliv_token_2026")
+
+        try {
+            val options = org.json.JSONObject()
+            options.put("name", "Campus Escrow Hub")
+            options.put("description", "Secure pre-payment lock for: $itemName")
+            options.put("image", "https://s3.amazonaws.com/rzp-mobile/images/rzp.png")
+            options.put("theme.color", "#6366F1")
+            options.put("currency", "INR")
+            options.put("amount", (fee * 80).toInt()) // roughly 1 USD = 80 INR paise equivalent for demo purposes
+
+            val prefill = org.json.JSONObject()
+            prefill.put("email", profile.email)
+            prefill.put("contact", profile.phoneNumber)
+            options.put("prefill", prefill)
+
+            checkout.open(activity, options)
+        } catch (e: Exception) {
+            Log.e("CampusDeliveryAuth", "Razorpay initiation exception: ${e.message}")
+        }
+    }
+
+    fun onRazorpayPaymentSuccess(paymentId: String) {
+        val data = pendingOrderData ?: return
+        viewModelScope.launch {
+            val randToken = "CD-${(10000..99999).random()}-${(10..99).random()}"
+            val newOrder = OrderEntity(
+                itemName = data.itemName,
+                pickupLocation = data.pickup,
+                dropLocation = data.drop,
+                pickupLat = data.pickupLat,
+                pickupLng = data.pickupLng,
+                dropLat = data.dropLat,
+                dropLng = data.dropLng,
+                deliveryFee = data.fee,
+                status = "PENDING",
+                customerPhone = (authState.value as? AuthState.Authenticated)?.profile?.phoneNumber ?: "",
+                customerName = (authState.value as? AuthState.Authenticated)?.profile?.name ?: "Student",
+                customerEmail = (authState.value as? AuthState.Authenticated)?.profile?.email ?: "",
+                notes = data.notes,
+                rating = 0f,
+                partnerRating = 0f,
+                escrowStatus = "LOCKED", // Secure escrow locked state
+                qrCodeToken = randToken
+            )
+            repository.insertOrder(newOrder)
+            pendingOrderData = null
+            _activeTab.value = "feed"
+        }
+    }
+
+    fun onRazorpayPaymentFailure(errorMessage: String) {
+        Log.e("CampusDeliveryAuth", "Razorpay escrow deposit failed: $errorMessage")
     }
 
     fun logout() {
