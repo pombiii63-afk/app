@@ -13,7 +13,6 @@ import com.example.ui.StaffAdminConsole
 import com.example.ui.theme.MyApplicationTheme
 import com.example.viewmodel.CampusDeliveryViewModel
 import com.google.firebase.FirebaseApp
-import com.google.firebase.FirebaseOptions
 import com.razorpay.Checkout
 import com.razorpay.PaymentResultListener
 
@@ -31,36 +30,15 @@ class MainActivity : ComponentActivity(), PaymentResultListener {
         }
         
         // Initialize Firebase on app launch
-        var isFirebaseInit = false
         try {
             FirebaseApp.getInstance()
-            isFirebaseInit = true
             Log.d("MainActivity", "FirebaseApp default instance already configured.")
         } catch (e: IllegalStateException) {
             try {
-                val app = FirebaseApp.initializeApp(this)
-                if (app != null) {
-                    isFirebaseInit = true
-                    Log.d("MainActivity", "Firebase initialized automatically in MainActivity.")
-                } else {
-                    Log.w("MainActivity", "Firebase automatically initialized returned null (missing google-services.json/keys strings).")
-                }
+                FirebaseApp.initializeApp(this)
+                Log.d("MainActivity", "Firebase initialized automatically in MainActivity.")
             } catch (ex: Exception) {
                 Log.e("MainActivity", "Failed to initialize Firebase automatically: ${ex.message}")
-            }
-        }
-
-        if (!isFirebaseInit) {
-            try {
-                val options = FirebaseOptions.Builder()
-                    .setApiKey("AIzaSyB-campus-delivery-placeholderKey2")
-                    .setApplicationId("1:123456789012:android:abcdef1234567890")
-                    .setProjectId("campus-delivery-placeholder1")
-                    .build()
-                FirebaseApp.initializeApp(this, options)
-                Log.w("MainActivity", "Firebase initialized with safe placeholder fallback options in MainActivity.")
-            } catch (failedEx: Exception) {
-                Log.e("MainActivity", "Failed to initialize placeholder Firebase: ${failedEx.message}")
             }
         }
 

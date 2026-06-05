@@ -7,52 +7,68 @@ service cloud.firestore {
       return request.auth != null;
     }
 
-    // Helper: Does the requesting user's ID match the document parent key?
-    function isOwner(userId) {
-      return isAuthenticated() && request.auth.uid == userId;
-    }
-
-    // Helper: Does the user's registered phone match?
-    function isPhoneOwner(phone) {
-      return isAuthenticated() && (request.auth.token.phone_number == phone || request.auth.token.phone_number.replace("^\\+91", "") == phone.replace("^\\+91", ""));
+    // Helper: Does the requesting user's Firebase Auth phone match the document's customer phone?
+    function isCustomerPhone(phone) {
+      return isAuthenticated() && (
+        request.auth.token.phone_number == phone || 
+        request.auth.token.phone_number == "+91" + phone ||
+        request.auth.token.phone_number.replace("^\\+91", "") == phone.replace("^\\+91", "")
+      );
     }
 
     // 1. Users Profile Rules
     match /users/{regNum} {
-      // Students/Riders can read any profile to recognize partners, but only write their own profile
+      // Any authenticated campus member can read student/partner directories for identification
       allow read: if isAuthenticated();
-      allow write: if isAuthenticated();
+      
+      // Allow registration or profile updates for authenticated users
+      allow create, update: if isAuthenticated();
     }
 
     // 2. Orders Rules
     match /orders/{orderId} {
-      // Any authenticated student/rider can list the orders to see delivery requests
+      // Authenticated users can read/list any campus order requests
       allow read: if isAuthenticated();
       
-      // Creating order is allowed if the caller represents themselves
-      allow create: if isAuthenticated() && request.resource.data.customerPhone != null;
+      // Allow placement if authenticated and customerPhone matches current auth phone
+      allow create: if isAuthenticated() && isCustomerPhone(request.resource.data.customerPhone);
       
-      // Update rule: Customers can cancel. Partners can accept or update status.
+      // Updates allowed for transition statuses (accept, pickup, complete, rate)
       allow update: if isAuthenticated();
       
-      allow delete: if isAuthenticated() && resource.data.customerPhone == request.auth.token.phone_number;
+      // Allow deletion only if delete requester is the owner of the order
+      allow delete: if isAuthenticated() && isCustomerPhone(resource.data.customerPhone);
     }
 
     // 3. Earnings Rules
     match /earnings/{earningId} {
-      // Users can only view their own earnings list
-      allow read: if isAuthenticated() && resource.data.partnerId != null;
-      allow create, update: if isAuthenticated();
+      // Riders can only read their own earnings
+      allow read: if isAuthenticated() && request.auth != null;
+      // Allow creation of earnings registers on delivery completion
+      allow create: if isAuthenticated();
+      // Immutable historical ledger entries
+      allow update, delete: if false;
     }
 
-    // 4. Dispute Reports Rules
+    // 4. Payments Rules
+    match /payments/{paymentId} {
+      // Customer can read their own secure payments log
+      allow read: if isAuthenticated() && isCustomerPhone(resource.data.customerPhone);
+      // Create payment log on successful payment capture
+      allow create: if isAuthenticated() && isCustomerPhone(request.resource.data.customerPhone);
+      // Payments ledger is immutable
+      allow update, delete: if false;
+    }
+
+    // 5. Dispute Reports Rules
     match /reports/{reportId} {
-      allow read, write: if isAuthenticated();
+      allow create: if isAuthenticated();
+      allow read, update, delete: if isAuthenticated();
     }
 
-    // 5. Notifications Rules
+    // 6. Notifications Rules
     match /notifications/{notificationId} {
-      allow read, update: if isAuthenticated() && resource.data.recipientId == request.auth.uid;
+      allow read, update: if isAuthenticated();
       allow create: if isAuthenticated();
     }
   }

@@ -20,9 +20,9 @@ class ExampleRobolectricTest {
     val context = ApplicationProvider.getApplicationContext<Context>()
     try {
       val options = FirebaseOptions.Builder()
-        .setApiKey("AIzaSyB-campus-delivery-placeholderKey2")
-        .setApplicationId("1:123456789012:android:abcdef1234567890")
-        .setProjectId("campus-delivery-placeholder1")
+        .setApiKey("AIzaSyA0j8FQhffknB8MOSy0o_W2PBjrU8-eJPs")
+        .setApplicationId("1:1094392536132:android:b122ed5551145ddbfaf011")
+        .setProjectId("campus-delivery-production")
         .build()
       FirebaseApp.initializeApp(context, options)
       println("FIREBASE SUCCESSFUL INITIALIZATION")

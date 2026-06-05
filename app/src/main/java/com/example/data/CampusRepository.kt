@@ -3,7 +3,6 @@ package com.example.data
 import android.content.Context
 import android.util.Log
 import com.google.firebase.FirebaseApp
-import com.google.firebase.FirebaseOptions
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.Query
 import kotlinx.coroutines.channels.awaitClose
@@ -16,36 +15,15 @@ class CampusRepository(private val context: Context) {
     private var firestore: FirebaseFirestore
 
     init {
-        var isInitialized = false
         try {
             FirebaseApp.getInstance()
-            isInitialized = true
             Log.d("CampusRepository", "Firebase default instance already configured.")
         } catch (e: IllegalStateException) {
             try {
-                val app = FirebaseApp.initializeApp(context)
-                if (app != null) {
-                    isInitialized = true
-                    Log.d("CampusRepository", "Firebase auto-initialized from standard resource binding.")
-                } else {
-                    Log.w("CampusRepository", "Firebase auto-initialized returned null (resources missing).")
-                }
+                FirebaseApp.initializeApp(context)
+                Log.d("CampusRepository", "Firebase auto-initialized from standard resource binding.")
             } catch (ex: Exception) {
-                Log.e("CampusRepository", "Firebase auto-init failed, trying placeholder fallback to prevent crash: ${ex.message}")
-            }
-        }
-
-        if (!isInitialized) {
-            try {
-                val options = FirebaseOptions.Builder()
-                    .setApiKey("AIzaSyB-campus-delivery-placeholderKey2")
-                    .setApplicationId("1:123456789012:android:abcdef1234567890")
-                    .setProjectId("campus-delivery-placeholder1")
-                    .build()
-                FirebaseApp.initializeApp(context, options)
-                Log.w("CampusRepository", "Firebase initialized with safe placeholder fallbacks for offline development.")
-            } catch (failedEx: Exception) {
-                Log.e("CampusRepository", "Failed to initialize placeholder Firebase options: ${failedEx.message}")
+                Log.e("CampusRepository", "Firebase auto-init failed: ${ex.message}")
             }
         }
 
@@ -357,5 +335,34 @@ class CampusRepository(private val context: Context) {
         } catch (e: Exception) {
             Log.e("CampusRepository", "Error updateTrustScore: ${e.message}")
         }
+    }
+
+    suspend fun insertPayment(payment: PaymentEntity) {
+        try {
+            val docId = payment.id.ifBlank { firestore.collection("payments").document().id }
+            val finalPayment = payment.copy(id = docId)
+            firestore.collection("payments").document(docId).set(finalPayment).await()
+            Log.d("CampusRepository", "Payment set in Firestore: $docId")
+        } catch (e: Exception) {
+            Log.e("CampusRepository", "Error insertPayment: ${e.message}")
+        }
+    }
+
+    fun getPaymentsByCustomerFlow(phone: String): Flow<List<PaymentEntity>> = callbackFlow {
+        val listenerReg = firestore.collection("payments")
+            .whereEqualTo("customerPhone", phone)
+            .addSnapshotListener { snapshot, error ->
+                if (error != null) {
+                    trySend(emptyList())
+                    return@addSnapshotListener
+                }
+                if (snapshot != null) {
+                    val list = snapshot.mapNotNull { doc ->
+                        doc.toObject(PaymentEntity::class.java).copy(id = doc.id)
+                    }.sortedByDescending { it.timestamp }
+                    trySend(list)
+                }
+            }
+        awaitClose { listenerReg.remove() }
     }
 }

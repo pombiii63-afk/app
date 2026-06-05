@@ -50,6 +50,15 @@ data class EarningEntity(
     val timestamp: Long = System.currentTimeMillis()
 )
 
+data class PaymentEntity(
+    val id: String = "",
+    val orderId: String = "",
+    val amount: Double = 0.0,
+    val status: String = "SUCCESS",
+    val customerPhone: String = "",
+    val timestamp: Long = System.currentTimeMillis()
+)
+
 data class ReportEntity(
     val id: String = "",
     val orderId: String = "",

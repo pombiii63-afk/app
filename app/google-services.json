@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "1094392536132",
+    "project_id": "campus-delivery-production",
+    "storage_bucket": "campus-delivery-production.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:1094392536132:android:b122ed5551145ddbfaf011",
+        "android_client_info": {
+          "package_name": "com.aistudio.campusdelivery.rxcpt"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyA0j8FQhffknB8MOSy0o_W2PBjrU8-eJPs"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

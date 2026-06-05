@@ -29,21 +29,7 @@ class CampusDeliveryViewModel(application: Application) : AndroidViewModel(appli
     private val repository: CampusRepository = CampusRepository(application)
     
     init {
-        // Seed default orders & profiles ONLY in local DEBUG builds for developer visual testing, keeping PROD clean
-        if (com.example.BuildConfig.DEBUG) {
-            viewModelScope.launch {
-                repository.allOrdersFlow.first().let { currentList ->
-                    if (currentList.isEmpty()) {
-                        seedDefaultOrders()
-                    }
-                }
-                repository.allProfilesFlow.first().let { currentList ->
-                    if (currentList.isEmpty()) {
-                        seedDefaultProfiles()
-                    }
-                }
-            }
-        }
+        // No startup mock seeding - keeping Firestore database clean for production use
     }
 
     // Observing Firestore Collections reactively via Flows
@@ -358,6 +344,7 @@ class CampusDeliveryViewModel(application: Application) : AndroidViewModel(appli
         val data = pendingOrderData ?: return
         viewModelScope.launch {
             val randToken = "CD-${(10000..99999).random()}-${(10..99).random()}"
+            val customerPhoneVal = (authState.value as? AuthState.Authenticated)?.profile?.phoneNumber ?: ""
             val newOrder = OrderEntity(
                 itemName = data.itemName,
                 pickupLocation = data.pickup,
@@ -368,7 +355,7 @@ class CampusDeliveryViewModel(application: Application) : AndroidViewModel(appli
                 dropLng = data.dropLng,
                 deliveryFee = data.fee,
                 status = "PENDING",
-                customerPhone = (authState.value as? AuthState.Authenticated)?.profile?.phoneNumber ?: "",
+                customerPhone = customerPhoneVal,
                 customerName = (authState.value as? AuthState.Authenticated)?.profile?.name ?: "Student",
                 customerEmail = (authState.value as? AuthState.Authenticated)?.profile?.email ?: "",
                 notes = data.notes,
@@ -377,7 +364,18 @@ class CampusDeliveryViewModel(application: Application) : AndroidViewModel(appli
                 escrowStatus = "LOCKED", // Secure escrow locked state
                 qrCodeToken = randToken
             )
-            repository.insertOrder(newOrder)
+            val insertedId = repository.insertOrder(newOrder)
+            
+            // Log this transaction inside payments Firestore collection
+            val newPayment = PaymentEntity(
+                id = paymentId,
+                orderId = insertedId,
+                amount = data.fee,
+                status = "CAPTURED",
+                customerPhone = customerPhoneVal
+            )
+            repository.insertPayment(newPayment)
+
             pendingOrderData = null
             _activeTab.value = "feed"
         }
@@ -682,86 +680,4 @@ class CampusDeliveryViewModel(application: Application) : AndroidViewModel(appli
         }
     }
 
-    // --- Internal Dummy Seeding for Firestore Demonstration ---
-
-    private suspend fun seedDefaultOrders() {
-        val sampleOrders = listOf(
-            OrderEntity(
-                itemName = "Double Cheese Burger & Peri-Peri Fries",
-                pickupLocation = "Main Food Court (KFC)",
-                dropLocation = "Hostel Block C, Room 405",
-                deliveryFee = 120.00,
-                status = "PENDING",
-                customerPhone = "+919876543210",
-                customerName = "Alex Rivera",
-                customerEmail = "alex.r@univ.edu",
-                notes = "Please ask them to add extra ketchup packets. Knock on arrival!"
-            ),
-            OrderEntity(
-                itemName = "Urgent: Bio-Chemistry Lab Printed Manual",
-                pickupLocation = "Admin Xerox & Print Cafe",
-                dropLocation = "Science Annex, Lab Room 12",
-                deliveryFee = 150.00,
-                status = "PENDING",
-                customerPhone = "+919999888877",
-                customerName = "Sarah Chen",
-                customerEmail = "schen@univ.edu",
-                notes = "Need this before 10:30 AM class starting soon!"
-            ),
-            OrderEntity(
-                itemName = "Fresh Grocery: Milk, Eggs, Banana Pack",
-                pickupLocation = "Campus MiniMart Grocery",
-                dropLocation = "Oak Staff Quarters, Apt 3",
-                deliveryFee = 80.00,
-                status = "PENDING",
-                customerPhone = "+919888777666",
-                customerName = "Prof. Marcus Brody",
-                customerEmail = "mbrody@univ.edu",
-                notes = "Leave on the white table outside the door. Thank you!"
-            ),
-            OrderEntity(
-                itemName = "Iced Vanilla Latte & Almond Croissant",
-                pickupLocation = "The Daily Grind Coffee (Library Plaza)",
-                dropLocation = "Central Library Study Room 3B",
-                deliveryFee = 70.00,
-                status = "PENDING",
-                customerPhone = "+919777666555",
-                customerName = "John Doe",
-                customerEmail = "jdoe@univ.edu",
-                notes = "Text when you reach the elevators, I will walk out."
-            )
-        )
-        for (order in sampleOrders) {
-            repository.insertOrder(order)
-        }
-    }
-
-    private suspend fun seedDefaultProfiles() {
-        val profiles = listOf(
-            UserProfileEntity(
-                registrationNumber = "ADMIN2026",
-                name = "Dean Simmons",
-                phoneNumber = "+919111111111",
-                email = "director@univ.edu",
-                role = "ADMIN",
-                reliabilityScore = 100,
-                strikes = 0,
-                isSuspended = false
-            ),
-            UserProfileEntity(
-                registrationNumber = "DEV1001",
-                name = "Ethan Cole",
-                phoneNumber = "+919123456789",
-                email = "ecole@univ.edu",
-                role = "PARTNER",
-                reliabilityScore = 100,
-                strikes = 0,
-                completedDeliveriesCount = 8,
-                averageRating = 4.8f
-            )
-        )
-        for (profile in profiles) {
-            repository.insertProfile(profile)
-        }
-    }
 }
